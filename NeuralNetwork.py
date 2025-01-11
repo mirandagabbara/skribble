@@ -1,5 +1,7 @@
+#This code is for learning about neural networks. This is not used in final project.
 import numpy as np
 from mnist import MNIST
+from sklearn.preprocessing import OneHotEncoder
 
 
 """
@@ -7,211 +9,164 @@ ReLU activation function
 @param x: Neuron layer list
 @return: ReLU list
 """
-def relu(x):
-    relu_list = []
-    for output in range(len(x)):
-        relu_list.append(np.maximum(0, x[output]))
-    return relu_list
+def relu(x):    
+    return np.maximum(0, x)
+
+"""
+ReLU derivative function for backpropagation
+@param x: Neuron layer outputs
+@return: ReLU derivative list
+"""
+def relu_derivative(x):
+    return np.where(x > 0, 1, 0)
 
 """
 Softmax activation function
 @param x: Neuron layer list
-@return: softmax list 
+@return: softmax list
 """
 def softmax(x):
-    exp_values = []
-    for output in x:
-        exp_values.append(np.exp(output))
+    x = np.array(x)  # Ensure input is a NumPy array
+    exp_values = np.exp(x - np.max(x))  # Stabilize by subtracting max value
+    return exp_values / np.sum(exp_values)
 
-    norm_base = sum(exp_values)
-
-    norm_values = []
-    for value in exp_values:
-        norm_values.append(value / norm_base)
-
-    return norm_values
-
-
-
-def relu_derivative(x):
-    return np.where(x > 0, 1, 0)
-
-
+"""
+Categorical cross-entropy loss function
+@param predicted: Predicted outputs
+@param actual: Actual outputs
+@return: Cross-entropy loss
+"""
 def categorical_cross_entropy(predicted, actual):
-    epsilon = 1e-12  # To avoid log(0)
+    epsilon = 1e-12  # Avoid log(0)
     predicted = np.clip(predicted, epsilon, 1. - epsilon)
     return -np.sum(actual * np.log(predicted))
 
 
-class Neuron:
-    def __init__(self, num_inputs, activation_function):
-        self.num_inputs = num_inputs
-        self.activation_function = activation_function
-        self.weights = np.random.randn(num_inputs) * np.sqrt(2. / num_inputs)  # He initialization
-        self.bias = np.random.randn()
-        self.output = 0
-        self.inputs = None
-        self.d_weights = None
-        self.d_bias = None
-        self.delta = 0
-
-    def forward(self, inputs):
-        self.output = 0
-        self.output = np.dot(self.weights, inputs) + self.bias
-
-        #Apply the ReLU activation function
-        if self.activation_function is not None:
-            self.output = self.activation_function(self.output)
-
-        return self.output
-
-    def backward(self, delta, learning_rate):
-        if self.activation_function == "relu":
-            delta *= relu_derivative(self.output)
-
-        self.d_weights = delta * self.inputs
-        self.d_bias = delta
-
-        self.delta = delta
-        return np.dot(delta, self.weights)
-
-    def update(self, learning_rate):
-        self.weights -= learning_rate * self.d_weights
-        self.bias -= learning_rate * self.d_bias
-
-
 class Layer:
+    """
+    Represents a layer in the neural network.
+    """
     def __init__(self, num_inputs, num_neurons, activation_function):
-        self.num_inputs = num_inputs
-        self.num_neurons = num_neurons
+        # Initialize weights and biases for the layer
+        self.weights = np.random.randn(num_inputs, num_neurons) * np.sqrt(2. / num_inputs)
+        self.biases = np.zeros((1, num_neurons))
         self.activation_function = activation_function
-        self.neurons = [Neuron(num_inputs, activation_function) for _ in range(num_neurons)]
-
-    # Your forward function goes here before backwardq
-
-        self.neurons = []  # Initialize an empty list to store neurons
-        for i in range(num_neurons):
-            neuron = Neuron(num_inputs, activation_function)  # Create a new Neuron object
-            self.neurons.append(neuron)  # Add the neuron to the list
-
-        self.outputs = []
+        self.last_inputs = None  # Store inputs for backpropagation
+        self.last_outputs = None  # Store outputs for backpropagation
 
     def forward(self, inputs):
-        self.outputs = []
-        # Take the inputs and pass them each neuron's forward functions and store the outputs in the self.outputs list
-        for neuron in self.neurons:
-            self.outputs.append(neuron.forward(inputs))
-
-        self.outputs = self.activation_function(self.outputs)
-        return self.outputs
-
+        """
+        Perform the forward pass.
+        @param inputs: Inputs to the layer
+        @return: Outputs from the layer
+        """
+        self.last_inputs = inputs
+        linear_output = np.dot(inputs, self.weights) + self.biases
+        self.last_outputs = self.activation_function(linear_output) if self.activation_function else linear_output
+        return self.last_outputs
 
     def backward(self, delta, learning_rate):
-        next_delta = np.zeros(self.num_inputs)
-        for i, neuron in enumerate(self.neurons):
-            next_delta += neuron.backward(delta[i], learning_rate)
-        return next_delta
+        """
+        Perform the backward pass.
+        @param delta: Gradient from the next layer
+        @param learning_rate: Learning rate for weight updates
+        @return: Gradient for the previous layer
+        """
+        if self.activation_function == relu:
+            delta *= relu_derivative(self.last_outputs)
 
-    def update(self, learning_rate):
-        for neuron in self.neurons:
-            neuron.update(learning_rate)
+        # Compute gradients
+        grad_weights = np.dot(self.last_inputs.T, delta)
+        grad_biases = np.sum(delta, axis=0, keepdims=True)
+        delta_prev = np.dot(delta, self.weights.T)
+
+        # Update weights and biases
+        self.weights -= learning_rate * grad_weights
+        self.biases -= learning_rate * grad_biases
+
+        return delta_prev
 
 
 class NeuralNetwork:
+    """
+    Represents the neural network.
+    """
     def __init__(self, num_inputs, num_hidden_layers, num_hidden_layer_neurons, num_outputs):
-        self.num_inputs = num_inputs
-        self.num_hidden_layers = num_hidden_layers
-        self.num_hidden_layer_neurons = num_hidden_layer_neurons
-        self.num_outputs = num_outputs
-
-        # Now that we have all the required variables, go ahead and create the layers
-        # Always remember that we do NOT need to create a layer for the inputs. The initial
-        # inputs that we get make up the first input layer. So, we start from the first hidden
-        # layer and create layers all the way up to the last (output) layer
+        # Create the layers of the network
         self.layers = []
-
         for i in range(num_hidden_layers):
-            if i == 0:
-                input_size = num_inputs
-            else:
-                input_size = self.num_hidden_layer_neurons
-
-            hidden_layer = Layer(input_size, self.num_hidden_layer_neurons, relu)
-
-            self.layers.append(hidden_layer)
-
-        # At the end, create the output layer
-        output_layer = Layer(self.num_hidden_layer_neurons, self.num_outputs, softmax)
-        self.layers.append(output_layer)
-
-
+            input_size = num_inputs if i == 0 else num_hidden_layer_neurons
+            self.layers.append(Layer(input_size, num_hidden_layer_neurons, relu))
+        self.layers.append(Layer(num_hidden_layer_neurons, num_outputs, softmax))
 
     def forward(self, inputs):
-        # Take the inputs and pass those inputs to each layer in the network
-        output = inputs
-
-        # Keep updating that single variable with the outputs of the layers
+        """
+        Perform the forward pass through the network.
+        @param inputs: Inputs to the network
+        @return: Network outputs
+        """
         for layer in self.layers:
-            output = layer.forward(output)
-
-        # At the end, whatever is in that variable will be the output of the last layer
-        return output
-
-    def calc_loss_delta(self, predicted_outputs, actual_outputs):
-        return predicted_outputs - actual_outputs
+            inputs = layer.forward(inputs)
+        return inputs
 
     def train(self, X, y, epochs, learning_rate):
+        """
+        Train the neural network.
+        @param X: Training inputs
+        @param y: Training labels (one-hot encoded)
+        @param epochs: Number of training epochs
+        @param learning_rate: Learning rate for updates
+        """
         for epoch in range(epochs):
             total_loss = 0
-            for i in range(X.shape[0]):
-                inputs = X[i]
-                expected_output = y[i]
+            for i in range(len(X)):
+                inputs = X[i:i+1]
+                expected_output = y[i:i+1]
 
                 # Forward pass
                 predicted_output = self.forward(inputs)
 
-                # Calculate loss
+                # Compute loss
                 loss = categorical_cross_entropy(predicted_output, expected_output)
                 total_loss += loss
 
-                # Calculate loss gradient (delta for the output layer)
-                loss_delta = self.calc_loss_delta(predicted_output, expected_output)
-
                 # Backward pass
-                delta = loss_delta
+                delta = predicted_output - expected_output
                 for layer in reversed(self.layers):
                     delta = layer.backward(delta, learning_rate)
-                    layer.update(learning_rate)
 
-            average_loss = total_loss / X.shape[0]
-            print(f'Epoch {epoch + 1}/{epochs}, Loss: {average_loss:.4f}')
-
+            # Print the average loss for this epoch
+            print(f"Epoch {epoch + 1}/{epochs}, Loss: {total_loss / len(X):.4f}")
 
 
+# Load the MNIST dataset from files
 mndata = MNIST('data')
-
-
-
 X_train, y_train = mndata.load_training()
-
 X_test, y_test = mndata.load_testing()
 
-
-
 # Convert lists to NumPy arrays
-
 X_train = np.array(X_train)
-
-y_train = np.array(y_train)
-
+y_train = np.array(y_train, dtype=np.int32)
 X_test = np.array(X_test)
-
-y_test = np.array(y_test)
-
-
+y_test = np.array(y_test, dtype=np.int32)
 
 # Normalize the data
-
 X_train = X_train / 255.0
-
 X_test = X_test / 255.0
+
+# One-hot encode the labels
+encoder = OneHotEncoder()
+y_train_encoded = encoder.fit_transform(y_train.reshape(-1, 1)).toarray()
+y_test_encoded = encoder.transform(y_test.reshape(-1, 1)).toarray()
+
+# Create the model with appropriate input and output size
+nn = NeuralNetwork(num_inputs=28*28, num_hidden_layers=3, num_hidden_layer_neurons=11, num_outputs=10)
+
+# Train the model in a number of epochs
+nn.train(X_train[:1000], y_train_encoded[:1000], epochs=5, learning_rate=0.01)
+
+# Test the model
+sample_index = 801
+predicted_output = nn.forward(X_test[sample_index:sample_index+1])
+print("Predicted:", np.argmax(predicted_output), "Actual:", y_test[sample_index])
+print(mndata.display(X_test[sample_index]))
