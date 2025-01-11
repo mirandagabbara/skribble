@@ -2,6 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pandas as pd
+import matplotlib.pyplot as plt
+from mnist import MNIST
+from sklearn.model_selection import train_test_split
+import numpy as np
+
 
 
 #Create a neural network that inherits nn.Module
@@ -40,7 +45,55 @@ class NeuralNetwork(nn.Module):
 #Pick a manual seed for randomization
 torch.manual_seed(14)
 
-#Create an instance of neural network
-NeuralNetwork = NeuralNetwork()
+model = NeuralNetwork(input_size=28*28, h1=128, h2=64, output_size=10)
 
-url = ''
+# Load in the MNIST dataset 
+mndata = MNIST('data')
+
+#X representzs the actual data of each drawing
+#Y represents the outcome/prediction
+X_train, y_train = mndata.load_training()
+X_test, y_test = mndata.load_testing()
+
+#Train Test split
+X_train, X_test, y_train, y_test = train_test_split(X_train,y_train, test_size = 0.2, random_state=14)
+
+#Convert X data to float tensors
+X_train = torch.tensor(X_train, dtype=torch.float32)
+X_test = torch.tensor(X_test, dtype=torch.float32)
+
+#Convert Y labels to tensors long
+y_train = torch.tensor(y_train, dtype=torch.long)
+y_test = torch.tensor(y_test, dtype=torch.long)
+
+#Set criteorn of model to measure error of predictions
+criterion = nn.CrossEntropyLoss()
+
+#Choose optimizer, using Adam optimizer
+#Also set learning rate. If error does not decrease after a number of epochs (iterations), lower it
+optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+
+#Train the model in a number of epochs
+# We send all our data through our netwrok. An epoch is one run of this
+epochs = 50
+losses = []
+
+for i in range(epochs):
+    #Go forward and get a prediction by sending training data
+    y_pred = model.forward(X_train) #et predicted results
+
+    #Measure loss (error). Begins high, then decreases
+    loss = criterion(y_pred, y_train) #Predicted values vs y_train
+
+    #Track losses
+    losses.append(loss.detach().numpy())
+
+    #print(f'Epoch: {i} and loss: {loss}')
+    
+    #Back propogation take error rate of forward propgation and feed backward through tewrok
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+
+
+#Test the model
