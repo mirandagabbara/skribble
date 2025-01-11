@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pandas as pd
-import matplotlib.pyplot as plt
 from mnist import MNIST
 from sklearn.model_selection import train_test_split
 import numpy as np
@@ -58,9 +57,14 @@ X_test, y_test = mndata.load_testing()
 #Train Test split
 X_train, X_test, y_train, y_test = train_test_split(X_train,y_train, test_size = 0.2, random_state=14)
 
+
 #Convert X data to float tensors
 X_train = torch.tensor(X_train, dtype=torch.float32)
 X_test = torch.tensor(X_test, dtype=torch.float32)
+
+X_train = X_train / 255.0
+X_test = X_test / 255.0
+
 
 #Convert Y labels to tensors long
 y_train = torch.tensor(y_train, dtype=torch.long)
@@ -87,13 +91,34 @@ for i in range(epochs):
 
     #Track losses
     losses.append(loss.detach().numpy())
-
-    #print(f'Epoch: {i} and loss: {loss}')
     
     #Back propogation take error rate of forward propgation and feed backward through tewrok
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
 
+    if i % 10 == 0:
+        print(f'Epoch: {i}, Loss: {loss:.4f}')
+
+
 
 #Test the model
+with torch.no_grad(): #Turn off back propogation
+    y_eval = model.forward(X_test) #X_test is test_data, y_eval is predictions
+    loss = criterion(y_eval, y_test)
+    print(loss)
+
+
+correct = 0
+with torch.no_grad(): #Turn off back propogation
+    for i, data in enumerate(X_test):
+        y_val = model.forward(data)
+        
+        #print(f"{i+1}) Prediction: {y_val.argmax().item()}, Actual: {y_test[i]}")
+
+        #Correct or not
+        if y_val.argmax().item() == y_test[i]:
+            correct += 1
+    
+#print(f'We got {correct} correct')
+
